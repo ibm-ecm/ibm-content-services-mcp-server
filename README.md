@@ -34,7 +34,7 @@ The Core Content Services MCP Server provides the following tools for interactin
 
 - **cancel_document_checkout**: Cancels a document checkout in the content repository, releasing the reservation.
 
-- **get_document_property**: Retrieves a document from the content repository by ID or path, returning the document object with its properties.
+- **get_document_properties**: Retrieves a document from the content repository by ID or path, returning the document object with its properties.
 
 - **get_class_specific_properties_name**: Retrieves a list of class-specific property names for a document based on its class definition. Filters out system properties and hidden properties.
 
