@@ -1,26 +1,24 @@
-#  Licensed Materials - Property of IBM (c) Copyright IBM Corp. 2025 All Rights Reserved.
-
-#  US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with
-#  IBM Corp.
-
-#  DISCLAIMER OF WARRANTIES :
-
-#  Permission is granted to copy and modify this Sample code, and to distribute modified versions provided that both the
-#  copyright notice, and this permission notice and warranty disclaimer appear in all copies and modified versions.
-
-#  THIS SAMPLE CODE IS LICENSED TO YOU AS-IS. IBM AND ITS SUPPLIERS AND LICENSORS DISCLAIM ALL WARRANTIES, EITHER
-#  EXPRESS OR IMPLIED, IN SUCH SAMPLE CODE, INCLUDING THE WARRANTY OF NON-INFRINGEMENT AND THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT WILL IBM OR ITS LICENSORS OR SUPPLIERS BE LIABLE FOR
-#  ANY DAMAGES ARISING OUT OF THE USE OF OR INABILITY TO USE THE SAMPLE CODE, DISTRIBUTION OF THE SAMPLE CODE, OR
-#  COMBINATION OF THE SAMPLE CODE WITH ANY OTHER CODE. IN NO EVENT SHALL IBM OR ITS LICENSORS AND SUPPLIERS BE LIABLE
-#  FOR ANY LOST REVENUE, LOST PROFITS OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL, CONSEQUENTIAL, INCIDENTAL OR PUNITIVE
-#  DAMAGES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN IF IBM OR ITS LICENSORS OR SUPPLIERS HAVE
-#  BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+# Copyright contributors to the IBM Core Content Services MCP Server project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+
+
+NULL_VALUE = object()
 
 
 class Document(BaseModel):
@@ -163,9 +161,13 @@ class Folder(BaseModel):
         default="Folder", description="Class identifier for the folder"
     )
     id: str = Field(description="The id of the folder")
-    name: str = Field(description="The name of the folder")
-    parent_folder_id: str = Field(description="The id of the parent folder")
-    creator: str = Field(description="The creator of the folder")
+    name: Optional[str] = Field(default=None, description="The name of the folder")
+    parent_folder_id: Optional[str] = Field(
+        default=None, description="The id of the parent folder"
+    )
+    creator: Optional[str] = Field(
+        default=None, description="The creator of the folder"
+    )
     properties: Optional[List[dict]] = Field(
         default=None, description="Folder properties"
     )
@@ -260,3 +262,84 @@ class DocumentFilingMatch(BaseModel):
     score: float = Field(
         description="The match score, higher values indicate better matches"
     )
+
+
+class Annotation(BaseModel):
+    """Pydantic Annotation class for the MCP server."""
+
+    class_name: Optional[str] = Field(
+        default="Annotation", description="Class name of the annotation"
+    )
+    creator: Optional[str] = Field(
+        default=None, description="The creator of the annotation"
+    )
+    date_created: Optional[datetime] = Field(
+        default=None, description="Creation timestamp"
+    )
+    date_last_modified: Optional[datetime] = Field(
+        default=None, description="Last modification timestamp"
+    )
+    id: str = Field(description="The id of the annotation")
+    name: Optional[str] = Field(default=None, description="The name of the annotation")
+    owner: Optional[str] = Field(
+        default=None, description="The owner of the annotation"
+    )
+    descriptive_text: Optional[str] = Field(
+        default=None, description="The descriptive text of the annotation"
+    )
+    content_size: Optional[int] = Field(
+        default=None, description="The size of the annotation content"
+    )
+    mime_type: Optional[str] = Field(
+        default=None, description="The mimetype of the content"
+    )
+    annotated_content_element: Optional[str] = Field(
+        default=None, description="Content element being annotated"
+    )
+    content_elements_present: Optional[List[str]] = Field(
+        None, description="Whether content elements are present"
+    )
+    content_elements: Optional[List[dict]] = Field(
+        default=None,
+        description="List of content elements with className, contentType, and sequence",
+    )
+
+    @classmethod
+    def create_an_instance(
+        cls, graphQL_changed_object_dict: dict, class_name: str = "Annotation"
+    ):
+        """Create a Annotation instance from a GraphQL Annotation"""
+
+        annotation_data = {"className": class_name, "id": None}
+
+        # for now, define a mapping of field names returned from the GraphQL API to the field names in the pydantic model
+        # instead of write some method to transform field names. Reason: Decoupling. Pydantic model is returned to LLM and test, so
+        # in case GraghQL API changes, we don't want to change the pydantic model and upstream test.
+        graphQL_to_pydantic_field_name_map: dict[str, str] = {
+            "id": "id",
+            "creator": "creator",
+            "dateCreated": "date_created",
+            "dateLastModified": "date_last_modified",
+            "name": "name",
+            "owner": "owner",
+            "descriptiveText": "descriptive_text",
+            "contentSize": "content_size",
+            "mimeType": "mime_type",
+            "annotatedContenttElement": "annotated_content_element",
+            "contentElementsPresent": "content_elements_present",
+            "contentElemnents": "content_elements",
+        }
+        required_fields = ["id"]
+
+        for name in graphQL_to_pydantic_field_name_map:
+            if name in graphQL_changed_object_dict:
+                annotation_data[graphQL_to_pydantic_field_name_map[name]] = (
+                    graphQL_changed_object_dict[name]
+                )
+            elif name in required_fields:
+                raise ValueError(
+                    f"Annotation: Missing required property '{name}' in GraphQL response"
+                )
+
+        # TODO: Content Elements is a list of dictionary.. Might need to define structure for return
+        return cls(**annotation_data)

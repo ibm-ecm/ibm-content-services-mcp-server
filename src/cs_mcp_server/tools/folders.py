@@ -1,22 +1,18 @@
-#  Licensed Materials - Property of IBM (c) Copyright IBM Corp. 2025 All Rights Reserved.
+# Copyright contributors to the IBM Core Content Services MCP Server project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-#  US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with
-#  IBM Corp.
-
-#  DISCLAIMER OF WARRANTIES :
-
-#  Permission is granted to copy and modify this Sample code, and to distribute modified versions provided that both the
-#  copyright notice, and this permission notice and warranty disclaimer appear in all copies and modified versions.
-
-#  THIS SAMPLE CODE IS LICENSED TO YOU AS-IS. IBM AND ITS SUPPLIERS AND LICENSORS DISCLAIM ALL WARRANTIES, EITHER
-#  EXPRESS OR IMPLIED, IN SUCH SAMPLE CODE, INCLUDING THE WARRANTY OF NON-INFRINGEMENT AND THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT WILL IBM OR ITS LICENSORS OR SUPPLIERS BE LIABLE FOR
-#  ANY DAMAGES ARISING OUT OF THE USE OF OR INABILITY TO USE THE SAMPLE CODE, DISTRIBUTION OF THE SAMPLE CODE, OR
-#  COMBINATION OF THE SAMPLE CODE WITH ANY OTHER CODE. IN NO EVENT SHALL IBM OR ITS LICENSORS AND SUPPLIERS BE LIABLE
-#  FOR ANY LOST REVENUE, LOST PROFITS OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL, CONSEQUENTIAL, INCIDENTAL OR PUNITIVE
-#  DAMAGES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN IF IBM OR ITS LICENSORS OR SUPPLIERS HAVE
-#  BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-
+import json
 import logging
 import re
 import traceback
@@ -27,7 +23,7 @@ from mcp.server.fastmcp import FastMCP
 
 from cs_mcp_server.client import GraphQLClient
 from cs_mcp_server.utils import ToolError
-from cs_mcp_server.utils.model.core import Document, Folder
+from cs_mcp_server.utils.model.core import NULL_VALUE, Document, Folder
 from cs_mcp_server.utils.model.coreInput import FolderPropertiesInput
 from cs_mcp_server.utils.constants import (
     DEFAULT_FOLDER_CLASS,
@@ -47,8 +43,14 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         parent_folder: str,
         class_identifier: Optional[str] = None,
         id: Optional[str] = None,
+        folder_properties: Optional[FolderPropertiesInput] = None,
     ) -> Union[Folder, ToolError]:
         """
+        **PREREQUISITES IN ORDER**: To use this tool, you MUST call two other tools first in a specific sequence.
+        1. determine_class tool to get the class_identifier.
+        2. get_class_property_descriptions to get a list of valid properties for the given class_identifier
+
+
         Creates a folder in the content repository with specified properties. This tool interfaces with the GraphQL API
         to create a new folder object with the provided parameters.
 
@@ -56,6 +58,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         :param parent_folder	string	Yes	The identifier of the parent folder where this folder will be created.
         :param class_identifier	string	No	The class identifier for the folder. If not provided, defaults to "Folder".
         :param id	string	No	The unique identifier for the folder. If not provided, a new UUID with curly braces will be generated (format: {uuid}).
+        :param folder_properties	FolderPropertiesInput No properties of to set.
 
         :returns: If successful, return a folder object with the following properties:
             id: The identifier of the created folder
@@ -67,30 +70,22 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         """
         method_name = "create_folder"
         try:
-            # default class and id
-            if not class_identifier:
-                class_identifier = DEFAULT_FOLDER_CLASS
             if not id:
                 id = "{" + str(uuid.uuid4()) + "}"
-
+            if not class_identifier:
+                class_identifier = DEFAULT_FOLDER_CLASS
             mutation = """
-                    mutation createFolder($repo:String!, $name:String!, $id:ID!
-                    $className:String, $parent:String!)
+                    mutation createFolder($repo:String!, $id:ID!
+                    $className:String, $folderProperties:FolderPropertiesInput!)
                     {
-                    createFolder(repositoryIdentifier: $repo, 
-                        classIdentifier:$className, 
+                    createFolder(repositoryIdentifier: $repo,
+                        classIdentifier:$className,
                         id: $id
-                    folderProperties:
-                        {
-                        name:$name,
-                        parent:
-                        {
-                            identifier:$parent
-                        }
-                        }
+                        folderProperties: $folderProperties
                     )
                     {
                         id
+                        className
                         properties {
                         id
                         value
@@ -98,23 +93,47 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                     }
                     }
             """
+
+            # Build base folder properties
+            base_properties = {"name": name, "parent": {"identifier": parent_folder}}
+
+            # Process folder properties if provided
+            all_properties = base_properties
+            if folder_properties:
+                base_dict = folder_properties.model_dump(exclude_none=True)
+                if "properties" not in base_dict or not base_dict["properties"]:
+                    pass  # Continue processing even if there are no properties
+                else:
+                    try:
+                        transformed_props = folder_properties.transform_properties_dict(
+                            exclude_none=True
+                        )
+                        all_properties = {**base_properties, **transformed_props}
+                    except Exception as e:
+                        logger.error("Error transforming folder properties: %s", str(e))
+                        logger.error(traceback.format_exc())
+                        return ToolError(
+                            message=f"{method_name} failed: {str(e)}. Trace available in server logs."
+                        )
+            logger.info(json.dumps(all_properties, indent=2))
             var = {
                 "repo": graphql_client.object_store,
-                "parent": parent_folder,
-                "name": name,
+                "folderProperties": all_properties,
                 "id": id,
                 "className": class_identifier,
             }
+
             response = graphql_client.execute(query=mutation, variables=var)
             # handling exception, for example duplicate folder name
             if "errors" in response:
                 return ToolError(
                     message=f"create_folder failed: got err {response}.",
                 )
+
             # return response["data"]["createFolder"]
             return Folder.create_an_instance(
                 graphQL_changed_object_dict=response["data"]["createFolder"],
-                class_identifier=class_identifier,
+                class_identifier=response["data"]["createFolder"]["className"],
             )
 
         except Exception as e:
@@ -158,7 +177,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                     )
                     {
                         id
-                        
+                        className
                     }
                     }
             """
@@ -174,7 +193,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
                 )
             return_id = response["data"]["deleteFolder"]["id"]
 
-            return return_id
+            return response["data"]["deleteFolder"]["id"]
 
         except Exception as e:
             error_traceback = traceback.format_exc(limit=TRACEBACK_LIMIT)
@@ -268,6 +287,10 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             return_rcr = response["data"]["repositoryObjects"]["independentObjects"]
             return_id = ""
             if len(return_rcr) > 0:
+                if len(return_rcr) > 1:
+                    return ToolError(
+                        message=f"unfile_document failed: this document has been filed more than once in the folder.",
+                    )
                 return_id = return_rcr[0]["id"]
             else:
                 return ToolError(
@@ -381,9 +404,9 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         Description:
         Updates an existing folder in the content repository with specified properties.
 
-        :param identifier: The folder identifier or path (required). This can be either the folder's ID (GUID) or its path in the repository (e.g., "/Folder1/folder123").
-        :param class_identifier: The class identifier for the folder. If provided, allows changing the folder's class.
-        :param folder_properties: Properties to update for the folder including name, etc
+        :param identifier: String The folder identifier or path (required). This can be either the folder's ID (GUID) or its path in the repository (e.g., "/Folder1/folder123").
+        :param class_identifier: String Optional. The class identifier for the folder. If provided, allows changing the folder's class.
+        :param folder_properties: FolderPropertiesInput Properties to update for the folder including name, etc
 
         :returns: If successful, returns a Folder object with its updated properties.
                  If unsuccessful, returns a ToolError with details about the failure.
@@ -391,39 +414,61 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         method_name = "update_folder"
         try:
             # Prepare the mutation
-            mutation = """
-            mutation ($object_store_name: String!, $identifier: String!, $class_identifier: String,
-                     $folder_properties: FolderPropertiesInput) {
-              updateFolder(
-                repositoryIdentifier: $object_store_name
-                identifier: $identifier
-                classIdentifier: $class_identifier
-                folderProperties: $folder_properties
-              ) {
-                id
-                className
-                properties {
-                  id
-                  value
+            if class_identifier:
+                mutation = """
+                mutation ($object_store_name: String!, $identifier: String!, $class_identifier: String,
+                        $folder_properties: FolderPropertiesInput) {
+                updateFolder(
+                    repositoryIdentifier: $object_store_name
+                    identifier: $identifier
+                    classIdentifier: $class_identifier
+                    folderProperties: $folder_properties
+                ) {
+                    id
+                    className
+                    properties {
+                    id
+                    value
+                    }
                 }
-              }
-            }
+                }
+                """
+            else:
+                mutation = """
+                mutation ($object_store_name: String!, $identifier: String!, 
+                        $folder_properties: FolderPropertiesInput) {
+                updateFolder(
+                    repositoryIdentifier: $object_store_name
+                    identifier: $identifier
+                    
+                    folderProperties: $folder_properties
+                ) {
+                    id
+                    className
+                    properties {
+                    id
+                    value
+                    }
+                }
+                }
             """
 
             # Prepare variables for the GraphQL query
             variables = {
                 "object_store_name": graphql_client.object_store,  # Always use the default object store
                 "identifier": identifier,
-                "class_identifier": class_identifier if class_identifier else None,
+                # "class_identifier": class_identifier if class_identifier else NULL_VALUE,
                 "folder_properties": None,
             }
-
+            if class_identifier:
+                variables["class_identifier"] = class_identifier
             # Process folder properties if provided
             if folder_properties:
                 try:
                     transformed_props = folder_properties.transform_properties_dict(
                         exclude_none=True
                     )
+
                     variables["folder_properties"] = transformed_props
                 except Exception as e:
                     logger.error("Error transforming folder properties: %s", str(e))

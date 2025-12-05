@@ -1,21 +1,16 @@
-#  Licensed Materials - Property of IBM (c) Copyright IBM Corp. 2025 All Rights Reserved.
-
-#  US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with
-#  IBM Corp.
-
-#  DISCLAIMER OF WARRANTIES :
-
-#  Permission is granted to copy and modify this Sample code, and to distribute modified versions provided that both the
-#  copyright notice, and this permission notice and warranty disclaimer appear in all copies and modified versions.
-
-#  THIS SAMPLE CODE IS LICENSED TO YOU AS-IS. IBM AND ITS SUPPLIERS AND LICENSORS DISCLAIM ALL WARRANTIES, EITHER
-#  EXPRESS OR IMPLIED, IN SUCH SAMPLE CODE, INCLUDING THE WARRANTY OF NON-INFRINGEMENT AND THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT WILL IBM OR ITS LICENSORS OR SUPPLIERS BE LIABLE FOR
-#  ANY DAMAGES ARISING OUT OF THE USE OF OR INABILITY TO USE THE SAMPLE CODE, DISTRIBUTION OF THE SAMPLE CODE, OR
-#  COMBINATION OF THE SAMPLE CODE WITH ANY OTHER CODE. IN NO EVENT SHALL IBM OR ITS LICENSORS AND SUPPLIERS BE LIABLE
-#  FOR ANY LOST REVENUE, LOST PROFITS OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL, CONSEQUENTIAL, INCIDENTAL OR PUNITIVE
-#  DAMAGES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN IF IBM OR ITS LICENSORS OR SUPPLIERS HAVE
-#  BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+# Copyright contributors to the IBM Core Content Services MCP Server project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """
 MCP Server Main Module
@@ -30,9 +25,9 @@ import asyncio
 import atexit
 import logging
 import os
+from enum import Enum
 
 # Third-party imports
-import truststore
 from mcp.server.fastmcp import FastMCP
 
 # Use absolute imports
@@ -48,14 +43,49 @@ from cs_mcp_server.tools.vector_search import register_vector_search_tool
 from cs_mcp_server.tools.folders import register_folder_tools
 from cs_mcp_server.tools.annotations import register_annotation_tools
 
-# Configure logging
+# Configure logging with dynamic level from environment variable
+log_level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_name, logging.INFO)
+
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Global MCP instance
-mcp = FastMCP("ecm")
+# Log the configured level for debugging
+logger.debug("Logging configured at %s level", log_level_name)
+
+# Global MCP instance - will be initialized by entry point
+mcp = None
+
+
+class ServerType(str, Enum):
+    """Enumeration of available MCP server types."""
+
+    CORE = "core"
+    VECTOR_SEARCH = "vector-search"
+    LEGAL_HOLD = "legal-hold"
+    FULL = "full"
+
+
+def _initialize_mcp_server(server_name: str) -> FastMCP:
+    """
+    Initialize the global MCP server instance.
+
+    This function should be called once at the start of each entry point
+    before any tool registration occurs.
+
+    Args:
+        server_name: The name for the MCP server instance
+
+    Returns:
+        FastMCP: The initialized MCP server instance
+    """
+    global mcp
+    if mcp is None:
+        mcp = FastMCP(server_name)
+        logger.info("Initialized MCP server: %s", server_name)
+    return mcp
 
 
 def parse_ssl_flag(value, default="true"):
@@ -167,24 +197,53 @@ def initialize_graphql_client():
     )
 
 
-def register_tools(graphql_client: GraphQLClient, metadata_cache: MetadataCache):
+def register_server_tools(
+    graphql_client: GraphQLClient,
+    metadata_cache: MetadataCache,
+    server_type: ServerType,
+) -> None:
     """
-    Register all tools with the MCP server instance.
+    Register tools based on the server type.
 
     Args:
-        graphql_client: The initialized GraphQL client to use with tools
-        metadata_cache: Optional metadata cache instance
+        graphql_client: The initialized GraphQL client
+        metadata_cache: The metadata cache instance
+        server_type: The type of server (ServerType enum)
     """
-    # Register all tools with the GraphQL client
+    # Ensure mcp is initialized (type narrowing for type checker)
+    assert mcp is not None
 
-    register_document_tools(mcp, graphql_client, metadata_cache)
-    # Planned for future releases
-    # register_legalhold(mcp, graphql_client)
-    # register_vector_search_tool(mcp, graphql_client)
-    register_search_tools(mcp, graphql_client, metadata_cache)
-    register_class_tools(mcp, graphql_client, metadata_cache)
-    register_folder_tools(mcp, graphql_client)
-    register_annotation_tools(mcp, graphql_client)
+    logger.info("Registering tools for %s server", server_type.value)
+
+    # Register tools based on server type
+    if server_type == ServerType.CORE:
+        register_document_tools(mcp, graphql_client, metadata_cache)
+        register_folder_tools(mcp, graphql_client)
+        register_class_tools(mcp, graphql_client, metadata_cache)
+        register_search_tools(mcp, graphql_client, metadata_cache)
+        register_annotation_tools(mcp, graphql_client)
+        logger.info("Core tools registered")
+
+    elif server_type == ServerType.VECTOR_SEARCH:
+        register_vector_search_tool(mcp, graphql_client)
+        logger.info("Vector search tools registered")
+
+    elif server_type == ServerType.LEGAL_HOLD:
+        register_legalhold(mcp, graphql_client)
+        logger.info("Legal hold tools registered")
+
+    elif server_type == ServerType.FULL:
+        register_document_tools(mcp, graphql_client, metadata_cache)
+        register_folder_tools(mcp, graphql_client)
+        register_class_tools(mcp, graphql_client, metadata_cache)
+        register_search_tools(mcp, graphql_client, metadata_cache)
+        register_annotation_tools(mcp, graphql_client)
+        register_vector_search_tool(mcp, graphql_client)
+        register_legalhold(mcp, graphql_client)
+        logger.info("All tools registered")
+
+    else:
+        raise ValueError(f"Unknown server type: {server_type}")
 
 
 async def shutdown_client(graphql_client):
@@ -195,29 +254,39 @@ async def shutdown_client(graphql_client):
         graphql_client: The GraphQL client to close
     """
     await graphql_client.close()
-    logger.info("GraphQL client session closed.")
+    logger.info("GraphQL client session closed")
 
 
-def main():
+def _run_server(server_type: ServerType) -> None:
     """
-    Main entry point for the MCP server.
-    Initializes the GraphQL client and runs the MCP server.
+    Common server initialization and run logic.
+
+    Args:
+        server_type: The type of server to run (ServerType enum)
     """
-    logger.info("Initializing GraphQL MCP Server...")
-    # Initialize the GraphQL client
+    server_name = server_type.value
+    logger.info("Starting %s MCP Server", server_name)
+
+    # Initialize the global mcp instance
+    _initialize_mcp_server(server_name)
+
+    # Initialize GraphQL client
     graphql_client = initialize_graphql_client()
-    logger.info("GraphQL client initialized successfully.")
+    logger.info("GraphQL client initialized successfully")
 
-    # Create the metadata cache
+    # Create metadata cache
     metadata_cache = MetadataCache()
-    logger.info("Metadata cache created successfully.")
+    logger.info("Metadata cache created successfully")
 
-    # Register tools with the MCP server
-    register_tools(graphql_client, metadata_cache)
-    logger.info("Tools registered with MCP server.")
+    # Register tools for this server type
+    register_server_tools(graphql_client, metadata_cache, server_type)
+    logger.info("Tools registered for %s server", server_type.value)
+
+    # Ensure mcp is initialized before running (type narrowing for type checker)
+    assert mcp is not None, "MCP server failed to initialize"
 
     # Run the MCP server
-    logger.info("Starting MCP server... Press Ctrl+C to exit.")
+    logger.info("Starting %s server - Press Ctrl+C to exit", server_name)
     try:
 
         def exit_handler():
@@ -232,11 +301,34 @@ def main():
         # Start the MCP server
         mcp.run(transport="stdio")
     except KeyboardInterrupt:
-        logger.info("Server shutting down...")
+        logger.info("Server shutting down")
         # Ensure client is closed on keyboard interrupt
         loop = asyncio.get_event_loop()
         loop.run_until_complete(shutdown_client(graphql_client))
-        logger.info("Server shut down gracefully.")
+        logger.info("Server shut down gracefully")
+
+
+def main_core() -> None:
+    """Entry point for core CS MCP server."""
+    _run_server(ServerType.CORE)
+
+
+def main_vector_search() -> None:
+    """Entry point for vector search MCP server."""
+    _run_server(ServerType.VECTOR_SEARCH)
+
+
+def main_legal_hold() -> None:
+    """Entry point for legal hold MCP server."""
+    _run_server(ServerType.LEGAL_HOLD)
+
+
+def main() -> None:
+    """
+    Default entry point for backward compatibility.
+    Runs the core server.
+    """
+    main_core()
 
 
 if __name__ == "__main__":

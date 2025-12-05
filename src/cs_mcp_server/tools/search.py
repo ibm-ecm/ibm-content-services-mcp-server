@@ -1,21 +1,16 @@
-#  Licensed Materials - Property of IBM (c) Copyright IBM Corp. 2025 All Rights Reserved.
-
-#  US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with
-#  IBM Corp.
-
-#  DISCLAIMER OF WARRANTIES :
-
-#  Permission is granted to copy and modify this Sample code, and to distribute modified versions provided that both the
-#  copyright notice, and this permission notice and warranty disclaimer appear in all copies and modified versions.
-
-#  THIS SAMPLE CODE IS LICENSED TO YOU AS-IS. IBM AND ITS SUPPLIERS AND LICENSORS DISCLAIM ALL WARRANTIES, EITHER
-#  EXPRESS OR IMPLIED, IN SUCH SAMPLE CODE, INCLUDING THE WARRANTY OF NON-INFRINGEMENT AND THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT WILL IBM OR ITS LICENSORS OR SUPPLIERS BE LIABLE FOR
-#  ANY DAMAGES ARISING OUT OF THE USE OF OR INABILITY TO USE THE SAMPLE CODE, DISTRIBUTION OF THE SAMPLE CODE, OR
-#  COMBINATION OF THE SAMPLE CODE WITH ANY OTHER CODE. IN NO EVENT SHALL IBM OR ITS LICENSORS AND SUPPLIERS BE LIABLE
-#  FOR ANY LOST REVENUE, LOST PROFITS OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL, CONSEQUENTIAL, INCIDENTAL OR PUNITIVE
-#  DAMAGES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN IF IBM OR ITS LICENSORS OR SUPPLIERS HAVE
-#  BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+# Copyright contributors to the IBM Core Content Services MCP Server project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from logging import Logger
 
@@ -366,14 +361,13 @@ def register_search_tools(
         class_symbolic_name: Optional[str] = None,
     ) -> Union[List[DocumentMatch], ToolError]:
         """
-        **PREREQUISITE**: To use this tool, you MUST call the determine_class tool first to get the class_symbolic_name.
-                          If the user does not specify a specific clas then call determine_class with the root Document class.
 
         :param keywords: Up to 3 words from the user's message that might contain the document's name.
                          Avoid using very common words such as "and", "or", "the", etc.
         :param class_symbolic_name: If specified, a specific document class to look in for matching documents.
                                     The root Document class is used by default. Specify a class only if the user indicates
-                                    that the documents should belong to a specific class.
+                                    that the documents should belong to a specific class. Use the determine_class tool to lookup
+                                    the class symbolic name based on the user's message.
 
         :returns: A list of matching documents, or a ToolError if no matches are found or there is some other problem.
                  Each match is a DocumentMatch object with information about the document including its name and a confidence score.

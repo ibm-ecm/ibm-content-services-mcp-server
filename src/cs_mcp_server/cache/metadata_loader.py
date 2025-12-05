@@ -1,30 +1,34 @@
-#  Licensed Materials - Property of IBM (c) Copyright IBM Corp. 2025 All Rights Reserved.
+# Copyright contributors to the IBM Core Content Services MCP Server project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-#  US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with
-#  IBM Corp.
+from logging import Logger
 
-#  DISCLAIMER OF WARRANTIES :
 
-#  Permission is granted to copy and modify this Sample code, and to distribute modified versions provided that both the
-#  copyright notice, and this permission notice and warranty disclaimer appear in all copies and modified versions.
-
-#  THIS SAMPLE CODE IS LICENSED TO YOU AS-IS. IBM AND ITS SUPPLIERS AND LICENSORS DISCLAIM ALL WARRANTIES, EITHER
-#  EXPRESS OR IMPLIED, IN SUCH SAMPLE CODE, INCLUDING THE WARRANTY OF NON-INFRINGEMENT AND THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT WILL IBM OR ITS LICENSORS OR SUPPLIERS BE LIABLE FOR
-#  ANY DAMAGES ARISING OUT OF THE USE OF OR INABILITY TO USE THE SAMPLE CODE, DISTRIBUTION OF THE SAMPLE CODE, OR
-#  COMBINATION OF THE SAMPLE CODE WITH ANY OTHER CODE. IN NO EVENT SHALL IBM OR ITS LICENSORS AND SUPPLIERS BE LIABLE
-#  FOR ANY LOST REVENUE, LOST PROFITS OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL, CONSEQUENTIAL, INCIDENTAL OR PUNITIVE
-#  DAMAGES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN IF IBM OR ITS LICENSORS OR SUPPLIERS HAVE
-#  BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-
+import logging
 from typing import Union
 
 # Use absolute imports instead of relative imports
+from cs_mcp_server.cache import metadata
+from cs_mcp_server.cache.metadata import SYSTEM_ROOT_CLASS_TYPES
 from cs_mcp_server.utils.common import (
     CacheClassDescriptionData,
     CachePropertyDescription,
     ToolError,
 )
+
+# Logger for this module
+logger: Logger = logging.getLogger(__name__)
 
 
 def get_root_class_description_tool(
@@ -154,6 +158,134 @@ def get_root_class_description_tool(
         )
 
 
+def discover_and_load_root_class(
+    graphql_client, metadata_cache, class_symbolic_name: str, class_gql_data: dict
+) -> Union[bool, ToolError]:
+    logger.debug(f"Discovering and loading root class for class {class_symbolic_name}")
+    query_next_discover_root_class = """
+    query getClassMetadata($object_store_name: String!, $class_symbolic_name: String!) {
+    classDescription(
+        repositoryIdentifier: $object_store_name
+        identifier: $class_symbolic_name
+    ) {
+        superClassDescription {
+            symbolicName
+            superClassDescription {
+                symbolicName
+                superClassDescription {
+                    symbolicName
+                }
+            }
+        }
+    }
+    }
+    """
+
+    sys_root_class_name: str | None = None
+
+    try:
+        cur_class_name: str | None = class_symbolic_name
+        while True:
+            if cur_class_name in SYSTEM_ROOT_CLASS_TYPES:
+                sys_root_class_name = cur_class_name
+                break
+
+            super_class: dict = class_gql_data["superClassDescription"]
+            super_class_sym_name: str | None = (
+                super_class["symbolicName"] if super_class is not None else None
+            )
+            if super_class_sym_name is None:
+                break
+            while True:
+                logger.debug(f"Looking at super class sym name {sys_root_class_name }")
+                if super_class_sym_name in SYSTEM_ROOT_CLASS_TYPES:
+                    # Found our root class
+                    sys_root_class_name = super_class_sym_name
+                    break
+                if "superClassDescription" not in super_class:
+                    # Reached the end of the superclasses from this gql query. Break out and do another.
+                    break
+                super_class = super_class["superClassDescription"]
+                super_class_sym_name = (
+                    super_class["symbolicName"] if super_class is not None else None
+                )
+                # Reached the end of the superclasses without finding a root class.
+                if super_class_sym_name is None:
+                    break
+            logger.debug(f"System root class name if any so far {sys_root_class_name}")
+            logger.debug(
+                f"Next super class symbolic name to try if any {super_class_sym_name}"
+            )
+            # We found our root class
+            # Or, we reached the end of superclasses before finding a root class.
+            if sys_root_class_name is not None or super_class_sym_name is None:
+                break
+            # Continue with another gql query to discover the root class from more superclasses
+            logger.debug(
+                f"Continuing with another query for super class {super_class_sym_name}"
+            )
+            variables = {
+                "object_store_name": graphql_client.object_store,
+                "class_symbolic_name": super_class_sym_name,
+            }
+            response = graphql_client.execute(
+                query=query_next_discover_root_class, variables=variables
+            )
+
+            # Check for errors in the response
+            if "error" in response and response["error"]:
+                return ToolError(
+                    message=f"Failed to retrieve metadata for class {super_class_sym_name}: {response.get('message', 'Unknown error')}",
+                    suggestions=[
+                        "Verify the class name is correct",
+                        "Check your connection to the repository",
+                    ],
+                )
+
+            class_gql_data = response.get("data", {}).get("classDescription", {})
+
+            if not class_gql_data:
+                return ToolError(
+                    message=f"Class '{class_symbolic_name}' not found",
+                    suggestions=[
+                        "Check the class name",
+                        "Use get_root_class_description to see available classes",
+                    ],
+                )
+
+            cur_class_name = super_class_sym_name
+
+        if sys_root_class_name is None:
+            return ToolError(
+                message=f"Failed to discover the root class for {initial_class_name}",
+                suggestions=[
+                    "Check that the class name is correct",
+                    "Check that the class name is of a supported root type",
+                ],
+            )
+
+        logger.debug(
+            f"System root class found to be {sys_root_class_name}. Loading root class cache."
+        )
+        # Load the root class
+        load_stat = get_root_class_description_tool(
+            graphql_client, sys_root_class_name, metadata_cache
+        )
+        if isinstance(load_stat, ToolError):
+            return load_stat
+
+    except Exception as e:
+        return ToolError(
+            message=f"Failed to retrieve metadata for class {class_symbolic_name}: {str(e)}",
+            suggestions=[
+                "Verify the class name is correct",
+                "Check your connection to the repository",
+            ],
+        )
+
+    return True
+
+
 def get_class_metadata_tool(
     graphql_client,
     class_symbolic_name: str,
@@ -170,17 +302,6 @@ def get_class_metadata_tool(
     Returns:
         A ContentClassData object containing class metadata or a ToolError if an error occurs
     """
-    # First, determine which root class this belongs to
-    root_class = metadata_cache.find_root_class_for_class(class_symbolic_name)
-
-    if root_class is None:
-        existing_class_data = None
-    else:
-        existing_class_data = metadata_cache.get_class_data(
-            root_class, class_symbolic_name
-        )
-        if existing_class_data and len(existing_class_data.property_descriptions) > 0:
-            return existing_class_data
 
     query = """
     query getClassMetadata($object_store_name: String!, $class_symbolic_name: String!) {
@@ -203,13 +324,59 @@ def get_class_metadata_tool(
     }
     """
 
+    query_with_discover_root_class = """
+    query getClassMetadata($object_store_name: String!, $class_symbolic_name: String!) {
+    classDescription(
+        repositoryIdentifier: $object_store_name
+        identifier: $class_symbolic_name
+    ) {
+        namePropertyIndex
+        propertyDescriptions {
+            symbolicName
+            displayName
+            descriptiveText
+            dataType
+            cardinality
+            isSearchable
+            isSystemOwned
+            isHidden
+        }
+        superClassDescription {
+            symbolicName
+            superClassDescription {
+                symbolicName
+                superClassDescription {
+                    symbolicName
+                }
+            }
+        }
+    }
+    }
+    """
+    # First, determine which root class this belongs to
+    root_class = metadata_cache.find_root_class_for_class(class_symbolic_name)
+
+    if root_class is None:
+        existing_class_data = None
+    else:
+        existing_class_data = metadata_cache.get_class_data(
+            root_class, class_symbolic_name
+        )
+        if existing_class_data and len(existing_class_data.property_descriptions) > 0:
+            return existing_class_data
+
+    initial_query: str = (
+        query if existing_class_data else query_with_discover_root_class
+    )
+    logger.debug(f"initial_query: str = {initial_query}")
+
     variables = {
         "object_store_name": graphql_client.object_store,
         "class_symbolic_name": class_symbolic_name,
     }
 
     try:
-        response = graphql_client.execute(query=query, variables=variables)
+        response = graphql_client.execute(query=initial_query, variables=variables)
 
         # Check for errors in the response
         if "error" in response and response["error"]:
@@ -222,9 +389,9 @@ def get_class_metadata_tool(
             )
 
         # Process the response to make it more useful
-        class_data = response.get("data", {}).get("classDescription", {})
+        class_gql_data = response.get("data", {}).get("classDescription", {})
 
-        if not class_data:
+        if not class_gql_data:
             return ToolError(
                 message=f"Class '{class_symbolic_name}' not found",
                 suggestions=[
@@ -233,11 +400,35 @@ def get_class_metadata_tool(
                 ],
             )
 
+        if not existing_class_data:
+            discover_stat = discover_and_load_root_class(
+                graphql_client, metadata_cache, class_symbolic_name, class_gql_data
+            )
+            if isinstance(discover_stat, ToolError):
+                return discover_stat
+            root_class = metadata_cache.find_root_class_for_class(class_symbolic_name)
+            logger.debug(
+                f"Root class for {class_symbolic_name} found to be {root_class}"
+            )
+            # Root class should be loaded now else there would have been an error.
+            assert (
+                root_class is not None
+            ), f"Root class not found for class '{class_symbolic_name}'"
+            existing_class_data = metadata_cache.get_class_data(
+                root_class, class_symbolic_name
+            )
+            assert (
+                existing_class_data
+            ), f"Class data not found for class '{class_symbolic_name}'"
+            # Property descriptions shouldn't be loaded yet but go ahead and check anyway.
+            if len(existing_class_data.property_descriptions) > 0:
+                return existing_class_data
+
         # Convert the GraphQL response to our model objects
         property_descriptions = []
-        name_prop_idx: int | None = class_data.get("namePropertyIndex", None)
+        name_prop_idx: int | None = class_gql_data.get("namePropertyIndex", None)
         name_prop_sym_name: str | None = None
-        for idx, prop in enumerate(class_data.get("propertyDescriptions", [])):
+        for idx, prop in enumerate(class_gql_data.get("propertyDescriptions", [])):
             prop_sym_name: str = prop.get("symbolicName")
             if name_prop_idx and idx == name_prop_idx:
                 name_prop_sym_name = prop_sym_name
@@ -255,26 +446,10 @@ def get_class_metadata_tool(
                 )
             )
 
-        # If we already have class data, just update the properties
-        if existing_class_data:
-            existing_class_data.property_descriptions = property_descriptions
-            existing_class_data.name_property_symbolic_name = name_prop_sym_name
-            content_class_data = existing_class_data
-        else:
-            # Otherwise create a new ContentClassData with the class name as placeholder
-            content_class_data = CacheClassDescriptionData(
-                display_name=class_symbolic_name,
-                symbolic_name=class_symbolic_name,
-                descriptive_text="",
-                property_descriptions=property_descriptions,
-                name_property_symbolic_name=name_prop_sym_name,
-            )
-
-        # Cache the full class description only if we know the root class
-        if root_class is not None:
-            metadata_cache.set_class_data(
-                root_class, class_symbolic_name, content_class_data
-            )
+        # We already have class data, just update the properties
+        existing_class_data.property_descriptions = property_descriptions
+        existing_class_data.name_property_symbolic_name = name_prop_sym_name
+        content_class_data = existing_class_data
 
         # Return the ContentClassData object directly
         return content_class_data

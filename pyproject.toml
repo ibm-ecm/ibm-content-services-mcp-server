@@ -1,7 +1,7 @@
 [project]
 name = "cs-mcp-server"
-version = "0.1.0"
-description = "ECM MCP Server for GraphQL content management"
+version = "1.0.0"
+description = "Content Services MCP Server for FileNet Content Management"
 readme = "README.md"
 authors = [
     { name = "David Hanson", email = "dhanson1@us.ibm.com" },
@@ -24,7 +24,9 @@ dependencies = [
 ]
 
 [project.scripts]
-core-cs-mcp-server = "cs_mcp_server.mcp_server_main:main"
+core-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_core"
+vector-search-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_vector_search"
+legal-hold-cs-mcp-server = "cs_mcp_server.mcp_server_main:main_legal_hold"
 
 [build-system]
 requires = ["uv_build>=0.8.2,<0.9.0"]
