@@ -1184,6 +1184,7 @@ class GraphQLClient(GraphqlConnection):
                     cookies=cookies,
                     auth=auth,
                     timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    ssl=False if self.ssl_enabled == False else None,
                 ) as response:
                     # We no longer need to check for 401 and refresh token here
                     # since we proactively refresh tokens before sending requests
@@ -1464,6 +1465,7 @@ class GraphQLClient(GraphqlConnection):
                     cookies=cookies,
                     auth=auth,
                     timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    ssl=False if self.ssl_enabled == False else None,
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
