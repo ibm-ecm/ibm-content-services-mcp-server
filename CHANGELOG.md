@@ -22,5 +22,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Class and annotation management
 - SSL/TLS support with configurable verification
 
-[1.0.1]: https://github.com/ibm/ibm-content-services-mcp-server/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/ibm/ibm-content-services-mcp-server/releases/tag/v1.0.0
+[1.0.1]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/releases/tag/v1.0.0
