@@ -18,10 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GraphQL client for Content Services integration
 - Document management tools (create, update, delete, download)
 - Folder management tools (create, update, delete, list)
-- Search capabilities (basic and vector search)
+- Search capabilities (basic)
 - Class and annotation management
-- Hold management functionality
-- Metadata caching system
 - SSL/TLS support with configurable verification
 
 [1.0.1]: https://github.com/ibm/ibm-content-services-mcp-server/compare/v1.0.0...v1.0.1
