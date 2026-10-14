@@ -1,8 +1,5 @@
-# Deprecation Notice & Production Warning
->
-> **Notice**: This project is nearing end-of-life and will be officially deprecated.
->
-> - **Do not use in production**: New implementations should not use this project.
+# Production Warning
+> - **Do not use in production**
 
 # IBM Content Services MCP Server
 
