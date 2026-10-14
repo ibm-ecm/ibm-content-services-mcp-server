@@ -1,5 +1,5 @@
 # Production Warning
-> - **Do not use in production**: New implementations should not use this project.
+> - **Do not use in production**
 
 # IBM Content Services MCP Server
 
