@@ -153,13 +153,13 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
     @mcp.tool(
         name="delete_folder",
     )
-    def delete_folder(id_or_path: str) -> Union[str, ToolError]:
+    def delete_folder(identifier: str) -> Union[str, ToolError]:
         """
         Deletes a folder in the content repository. This tool interfaces with the GraphQL API
         to delete a folder object with the provided id.
 
 
-        :param id_or_path	string	Yes	The unique identifier or path for the folder. If not provided, an error will be returned.
+        :param identifier	string	Yes	The unique identifier or path for the folder. If not provided, an error will be returned.
 
         :returns: If successful, return the folder id.
          Else, return a ToolError instance that describes the error.
@@ -167,17 +167,17 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         method_name = "delete_folder"
         try:
             # check id or path
-            if not id_or_path:
+            if not identifier:
                 return ToolError(
-                    message=f"delete_folder failed: id is a required input.",
+                    message=f"delete_folder failed: identifier is a required input.",
                 )
 
             mutation = """
-                    mutation deleteFolder( $id_or_path:String!
+                    mutation deleteFolder( $identifier:String!
                     $repo: String!)
                     {
-                    deleteFolder(repositoryIdentifier: $repo, 
-                        identifier: $id_or_path
+                    deleteFolder(repositoryIdentifier: $repo,
+                        identifier: $identifier
                     )
                     {
                         id
@@ -187,7 +187,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             """
             var = {
                 "repo": graphql_client.object_store,
-                "id_or_path": id_or_path,
+                "identifier": identifier,
             }
             response = graphql_client.execute(query=mutation, variables=var)
             # handling exception, for example duplicate folder name
@@ -575,12 +575,12 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         name="get_folder_documents",
     )
     async def get_folder_documents(
-        folder_id_or_path: str,
+        identifier: str,
     ) -> Union[list[Document], ToolError]:
         """
         Retrieves a folder's contained documents.
 
-        :param folder_id_or_path: The folder id or path.
+        :param identifier: The folder id or path.
 
         :returns: A list contains documents in the folder
         """
@@ -589,10 +589,10 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
         logger.info("%s started", method_name)
         try:
             query = """
-            query getContainedDocuments($object_store_name: String!, $folder_id_or_path: String!){
+            query getContainedDocuments($object_store_name: String!, $identifier: String!){
                 folder(
                     repositoryIdentifier: $object_store_name
-                    identifier: $folder_id_or_path
+                    identifier: $identifier
                 ) {
                     containedDocuments
                         {
@@ -613,7 +613,7 @@ def register_folder_tools(mcp: FastMCP, graphql_client: GraphQLClient) -> None:
             """
 
             variables = {
-                "folder_id_or_path": folder_id_or_path,
+                "identifier": identifier,
                 "object_store_name": graphql_client.object_store,
             }
 

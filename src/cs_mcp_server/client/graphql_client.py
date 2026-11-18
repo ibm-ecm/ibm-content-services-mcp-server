@@ -44,6 +44,26 @@ import traceback
 logger = logging.getLogger("GraphQLClient")
 
 
+def _safe_download_path(download_folder_path: str, raw_filename: str) -> str:
+    """Build a download path from an untrusted Content-Disposition filename.
+
+    The filename is URL-decoded, reduced to its final path component, and the
+    resulting path is verified to be inside download_folder_path.
+    """
+    filename = os.path.basename(unquote(raw_filename).replace("\\", "/"))
+    if not filename or filename in (".", ".."):
+        raise Exception("Refusing unsafe filename from content-disposition")
+
+    file_path = os.path.join(download_folder_path, filename)
+
+    root = os.path.realpath(download_folder_path)
+    target = os.path.realpath(file_path)
+    if os.path.commonpath([root, target]) != root:
+        raise Exception("Refusing path outside the download folder")
+
+    return file_path
+
+
 class GraphQLClient(GraphqlConnection):
     """
     A service class to handle all communications with the GraphQL API.
@@ -1342,11 +1362,8 @@ class GraphQLClient(GraphqlConnection):
                 file_path = re.search(r'filename="([^"]+)"', content_disposition)
                 filename = file_path.group(1)  # pyright: ignore
 
-                # URL decode the filename if needed
-                filename = unquote(filename)
-
-                # Create full file path
-                file_path = os.path.join(download_folder_path, filename)
+                # Create full file path (filename is untrusted upstream input)
+                file_path = _safe_download_path(download_folder_path, filename)
 
                 # Write content to file
                 with open(file_path, "wb") as f:
@@ -1501,10 +1518,8 @@ class GraphQLClient(GraphqlConnection):
                     file_path = re.search(r'filename="([^"]+)"', content_disposition)
                     filename = file_path.group(1)  # pyright: ignore
 
-                    filename = unquote(filename)
-
-                    # Create full file path
-                    file_path = os.path.join(download_folder_path, filename)
+                    # Create full file path (filename is untrusted upstream input)
+                    file_path = _safe_download_path(download_folder_path, filename)
 
                     # Write content to file
                     with open(file_path, "wb") as f:

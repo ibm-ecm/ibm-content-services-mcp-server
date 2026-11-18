@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-11-12
+
+### Security
+- Sanitized `Content-Disposition` filename handling in `download_content` to prevent path traversal vulnerabilities
+- Upgraded `fastmcp` to `>=3.4.11` and pinned `joserfc>=1.7.6` for authentication and token security updates
+- Updated core dependencies (`aiohttp`, `requests`, `urllib3`, `python-multipart`, `click`, `mcp`, `multidict`) with latest security patches
+
+### Changed
+- Standardized folder parameter naming: updated `delete_folder` and `get_folder_documents` parameter to `identifier` for consistency
+
+### Fixed
+- Fixed `document_search` output format for metadata-only searches to omit empty score attributes
+
 ## [1.0.4] - 2026-03-25
 
 ### Added
@@ -93,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Class and annotation management
 - SSL/TLS support with configurable verification
 
+[1.0.5]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/ibm-ecm/ibm-content-services-mcp-server/compare/v1.0.1...v1.0.2
