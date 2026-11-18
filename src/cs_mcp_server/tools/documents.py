@@ -1214,7 +1214,10 @@ def register_document_tools(
                     score_key: score,
                     "document": onedoc,
                 }
-                contained_docs.append(onedoc_withscore)
+                if score != "":
+                    contained_docs.append(onedoc_withscore)
+                else:
+                    contained_docs.append(onedoc)
             return contained_docs
 
     async def cbr_search(
